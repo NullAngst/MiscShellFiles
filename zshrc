@@ -27,22 +27,22 @@ PROMPT_FG_NONE='%f' # Resets to default foreground color
 # ------------------------------------------------------------------------------
 
 alias ls='ls --color=auto -Flartchs'
-alias ll='ls -Flartchs'
-alias la='ls -a'
-alias lla='ls -la'
+alias ll='ls --color=auto -Flartchs'  # FIX: was bare 'ls', now inherits color flags
+alias la='ls --color=auto -a'         # FIX: was bare 'ls', now colorized
+alias lla='ls --color=auto -la'       # FIX: was bare 'ls', now colorized
 alias cp='rsync -vpartlXEHhP --ignore-existing'
 alias update='sudo zypper ref -f; sudo zypper dup; flatpak update'
 alias ripcd='bash /home/tyler/bin/ripcd.sh'
 alias grep='grep --color=auto -i -n -I'
 
 # ------------------------------------------------------------------------------
-# --- Custom Functions (mvp vcp unpack sss moveav)
+# --- Custom Functions (vmv vcp unpack sss moveav shredfile shredfolder)
 # ------------------------------------------------------------------------------
 
 # Verbose file move
 vmv() {
     if [ "$#" -lt 2 ]; then
-        echo "Usage: mvp <source> <destination>"
+        echo "Usage: vmv <source> <destination>"
         return 1
     fi
     rsync -vpartlXEHhP --info=progress2 --remove-source-files "$@"
@@ -51,7 +51,7 @@ vmv() {
 # Verbose file copy
 vcp() {
     if [ "$#" -lt 2 ]; then
-        echo "Usage: mvp <source> <destination>"
+        echo "Usage: vcp <source> <destination>"
         return 1
     fi
     rsync -vpartlXEHhP --info=progress2 --ignore-existing "$@"
@@ -249,7 +249,7 @@ shredfile() {
     esac
 }
 
-# shred a flder with proper args
+# shred a folder with proper args
 shredfolder() {
     if [ -z "$1" ]; then
         echo "Usage: shredfolder <folderpath>"
@@ -287,9 +287,9 @@ cfhelp() {
              CUSTOM ALIASES
 ========================================
 ls      : Colorized, verbose list (ls --color=auto -Flartchs)
-ll      : Verbose list (ls -Flartchs)
-la      : List all (ls -a)
-lla     : List all verbose (ls -la)
+ll      : Verbose list (ls --color=auto -Flartchs)
+la      : List all (ls --color=auto -a)
+lla     : List all verbose (ls --color=auto -la)
 cp      : Robust copy via rsync (--ignore-existing)
 update  : System update (zypper ref, zypper dup, flatpak update)
 ripcd   : Run ripcd.sh script
@@ -300,15 +300,15 @@ swp     : Wipe dead screen sessions
 ========================================
             CUSTOM FUNCTIONS
 ========================================
-vmv     : Verbose file move using rsync
-vcp     : Verbose file copy using rsync
-unpack  : Intelligently extract common compression types
-sss     : Start a new named screen session (Usage: sss <session_name>)
-srs     : Reattach to an existing screen session (Usage: srs <session_name>)
-sks     : Kill a specific screen session from the outside (Usage: sks <session_name>)
-moveav  : Move and sort folders of media into images/, videos/, and audio/
-shredfile : Runs shred against a file with proper arguments
-shredolder : Runs shred against a folder with proper arguments
+vmv       : Verbose file move using rsync
+vcp       : Verbose file copy using rsync
+unpack    : Intelligently extract common compression types
+sss       : Start a new named screen session (Usage: sss <session_name>)
+srs       : Reattach to an existing screen session (Usage: srs <session_name>)
+sks       : Kill a specific screen session from the outside (Usage: sks <session_name>)
+moveav    : Move and sort folders of media into images/, videos/, and audio/
+shredfile   : Runs shred against a file with proper arguments
+shredfolder : Runs shred against a folder with proper arguments  # FIX: was 'shredolder'
 
 EOF
 }
@@ -322,22 +322,32 @@ export EDITOR='nano'
 
 # --- History
 HISTFILE=~/.zsh_history
-HISTSIZE=10000
-SAVEHIST=10000
+HISTSIZE=50000
+SAVEHIST=50000
 setopt APPEND_HISTORY        # Append history to the history file
 setopt SHARE_HISTORY         # Share history between all sessions
 setopt HIST_IGNORE_DUPS      # Don't record duplicate commands
 setopt HIST_IGNORE_ALL_DUPS  # Delete old duplicate entries from history
 setopt HIST_FIND_NO_DUPS     # Don't show duplicates when searching
 setopt HIST_REDUCE_BLANKS    # Remove superfluous blanks
+setopt HIST_VERIFY           # ADDED: show history expansion before executing (e.g. !!)
 
 # --- Completion
-# Initialize the Zsh completion system
-autoload -U compinit && compinit
+# Cache compinit for faster shell startup (only regenerate once per day)
+autoload -U compinit
+if [[ -n ~/.zcompdump(#qN.mh+24) ]]; then
+    compinit
+else
+    compinit -C
+fi
+
 # Case-insensitive completion
 zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
-# Group completions by type
-zstyle ':completion:*:descriptions' group-name ''
+# Arrow-key navigable completion menu  # ADDED
+zstyle ':completion:*' menu select
+# Group completions by type with a header label  # FIX: was missing 'format', so grouping had no effect
+zstyle ':completion:*:descriptions' format '%B%d%b'
+zstyle ':completion:*' group-name ''
 
 # --- Keybindings
 bindkey -e # Use Emacs keybindings
@@ -357,6 +367,8 @@ zstyle ':vcs_info:*' enable git # Enable for git
 # --- FANCY PROMPT
 # ------------------------------------------------------------------------------
 # This section defines the appearance of your command prompt.
+
+setopt PROMPT_SUBST
 
 # precmd() is a special function that runs just before the prompt is drawn.
 # We use it to check the context (user, git, python) and set the color.
@@ -392,7 +404,7 @@ precmd() {
 # %~ -> current directory, with '~' for home
 # ${vcs_info_msg[0]} -> The formatted git info from our zstyle above
 # %(?.<ok_char>.<err_char>) -> Shows a different character if the last command failed.
-
-PROMPT="
+#
+PROMPT='
 ${PROMPT_FG_WHITE}%n${PROMPT_FG_GRAY}@%m ${PROMPT_FG_NONE}in ${PROMPT_CONTEXT_COLOR}%B%~%b${vcs_info_msg[0]}
-${PROMPT_CONTEXT_COLOR}❯ ${PROMPT_FG_NONE}"
+${PROMPT_CONTEXT_COLOR}❯ ${PROMPT_FG_NONE}'
