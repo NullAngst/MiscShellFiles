@@ -27,22 +27,22 @@ PROMPT_FG_NONE='%f' # Resets to default foreground color
 # ------------------------------------------------------------------------------
 
 alias ls='ls --color=auto -Flartchs'
-alias ll='ls --color=auto -Flartchs'  # FIX: was bare 'ls', now inherits color flags
-alias la='ls --color=auto -a'         # FIX: was bare 'ls', now colorized
-alias lla='ls --color=auto -la'       # FIX: was bare 'ls', now colorized
+alias ll='ls -Flartchs'
+alias la='ls -a'
+alias lla='ls -la'
 alias cp='rsync -vpartlXEHhP --ignore-existing'
 alias update='sudo zypper ref -f; sudo zypper dup; flatpak update'
 alias ripcd='bash /home/tyler/bin/ripcd.sh'
 alias grep='grep --color=auto -i -n -I'
 
 # ------------------------------------------------------------------------------
-# --- Custom Functions (vmv vcp unpack sss moveav shredfile shredfolder)
+# --- Custom Functions (mvp vcp unpack sss moveav)
 # ------------------------------------------------------------------------------
 
 # Verbose file move
 vmv() {
     if [ "$#" -lt 2 ]; then
-        echo "Usage: vmv <source> <destination>"
+        echo "Usage: mvp <source> <destination>"
         return 1
     fi
     rsync -vpartlXEHhP --info=progress2 --remove-source-files "$@"
@@ -51,72 +51,102 @@ vmv() {
 # Verbose file copy
 vcp() {
     if [ "$#" -lt 2 ]; then
-        echo "Usage: vcp <source> <destination>"
+        echo "Usage: mvp <source> <destination>"
         return 1
     fi
     rsync -vpartlXEHhP --info=progress2 --ignore-existing "$@"
 }
 
 
-# can extract common compression types intelligently
+# can extract common compression types intelligently and handles split archives
 unpack() {
-    if [ -z "$1" ]; then
-        echo "Usage: unpack <archive_file_or_directory>"
+    if [ "$#" -eq 0 ]; then
+        echo "Usage: unpack <archive_file_or_directory> [additional_files...]"
         return 1
     fi
 
-    local target="$1"
+    for target in "$@"; do
+        # Handle directories recursively
+        if [ -d "$target" ]; then
+            find "$target" -maxdepth 1 -type f -print0 | while IFS= read -r -d '' file; do
+                local lower_file=$(echo "$file" | tr '[:upper:]' '[:lower:]')
+                case "$lower_file" in
+                    *.tar.gz|*.tgz|*.tar.bz2|*.tbz2|*.tar.xz|*.tar|*.zip|*.rar|*.7z|*.001)
+                        unpack "$file"
+                        ;;
+                esac
+            done
+            continue
+        fi
 
-    if [ -d "$target" ]; then
-        find "$target" -maxdepth 1 -type f -print0 | while IFS= read -r -d '' file; do
-            local lower_file=$(echo "$file" | tr '[:upper:]' '[:lower:]')
-            case "$lower_file" in
-                *.tar.gz|*.tgz|*.tar.bz2|*.tbz2|*.tar.xz|*.tar|*.zip|*.rar|*.7z)
-                    unpack "$file"
-                    ;;
-            esac
-        done
-        return 0
-    fi
+        if [ ! -f "$target" ]; then
+            echo "Error: '$target' is not a valid file or directory."
+            continue
+        fi
 
-    if [ ! -f "$target" ]; then
-        echo "Error: '$target' is not a valid file or directory."
-        return 1
-    fi
-
-    local file="$target"
-    local dir=$(dirname "$file")
-    local base=$(basename "$file")
-    local folder_name=$(echo "$base" | sed -E 's/\.(tar\.gz|tar\.bz2|tar\.xz|tgz|tbz2|zip|rar|7z|tar)$//I')
-    local folder="$dir/$folder_name"
-    
-    mkdir -p "$folder"
-
-    local lower_base=$(echo "$base" | tr '[:upper:]' '[:lower:]')
-    case "$lower_base" in
-        *.tar.bz2|*.tbz2) tar -xvjf "$file" -C "$folder" ;;
-        *.tar.gz|*.tgz)   tar -xvzf "$file" -C "$folder" ;;
-        *.tar.xz)         tar -xvJf "$file" -C "$folder" ;;
-        *.tar)            tar -xvf "$file" -C "$folder" ;;
-        *.zip)            unzip "$file" -d "$folder" ;;
-        *.rar)            unrar x "$file" "$folder/" ;;
-        *.7z)             7z x "$file" -o"$folder" ;;
-        *)
-            echo "Error: Unsupported archive format for '$file'."
-            rmdir "$folder" 2>/dev/null
-            return 1
-            ;;
-    esac
-
-    if [ $? -eq 0 ]; then
-        rm "$file"
-        echo "Successfully unpacked into '$folder/' and deleted '$file'."
+        local file="$target"
+        local dir=$(dirname "$file")
+        local base=$(basename "$file")
         
-        unpack "$folder"
-    else
-        echo "Extraction failed for '$file'. The original file was not deleted."
-        return 1
-    fi
+        # Strip common and multi-volume suffixes for the output folder name
+        local folder_name=$(echo "$base" | sed -E 's/\.(tar\.gz|tar\.bz2|tar\.xz|tgz|tbz2|zip|rar|7z|tar|part[0-9]+\.rar|[0-9]{3})$//I')
+        local folder="$dir/$folder_name"
+        local lower_base=$(echo "$base" | tr '[:upper:]' '[:lower:]')
+
+        # Skip secondary archive volumes to prevent redundant extraction errors
+        if [[ "$lower_base" =~ \.(r[0-9]{2,}|z[0-9]{2,}|[0-9]{3})$ && ! "$lower_base" =~ \.(r00|r01|z01|001)$ ]]; then
+             continue
+        fi
+        if [[ "$lower_base" =~ \.part[0-9]+\.rar$ && ! "$lower_base" =~ \.part0*1\.rar$ ]]; then
+             continue
+        fi
+
+        mkdir -p "$folder"
+        local extracted=0
+
+        # Execute extraction against the primary file
+        case "$lower_base" in
+            *.tar.bz2|*.tbz2) tar -xvjf "$file" -C "$folder" && extracted=1 ;;
+            *.tar.gz|*.tgz)   tar -xvzf "$file" -C "$folder" && extracted=1 ;;
+            *.tar.xz)         tar -xvJf "$file" -C "$folder" && extracted=1 ;;
+            *.tar)            tar -xvf "$file" -C "$folder" && extracted=1 ;;
+            *.zip|*.zip.001)  unzip "$file" -d "$folder" && extracted=1 ;;
+            *.rar|*.part*.rar) unrar x "$file" "$folder/" && extracted=1 ;;
+            *.7z|*.7z.001)    7z x "$file" -o"$folder" && extracted=1 ;;
+            *)
+                echo "Error: Unsupported archive format for '$file'."
+                rmdir "$folder" 2>/dev/null
+                continue
+                ;;
+        esac
+
+        if [ "$extracted" -eq 1 ]; then
+            echo "Successfully unpacked into '$folder/'."
+            
+            # Identify split formats and scrub all related volume files
+            if [[ "$lower_base" =~ \.part[0-9]+\.rar$ ]]; then
+                local clean_base=$(echo "$file" | sed -E 's/\.part[0-9]+\.rar$//I')
+                rm -f "$clean_base".part*.rar(N)
+            elif [[ "$lower_base" =~ \.rar$ ]]; then
+                local clean_base="${file%.rar}"
+                rm -f "$file" "$clean_base".r[0-9][0-9](N) "$clean_base".s[0-9][0-9](N)
+            elif [[ "$lower_base" =~ \.zip$ || "$lower_base" =~ \.zip\.001$ ]]; then
+                local clean_base=$(echo "$file" | sed -E 's/\.zip(\.001)?$//I')
+                rm -f "$clean_base".zip "$clean_base".z[0-9][0-9](N)
+            elif [[ "$lower_base" =~ \.7z\.001$ ]]; then
+                local clean_base="${file%.001}"
+                rm -f "$clean_base".[0-9][0-9][0-9](N)
+            else
+                # Clean standard single-file archives
+                rm -f "$file"
+            fi
+            # Recursively scan the newly created folder
+            unpack "$folder"
+        else
+            echo "Extraction failed for '$file'. Original files were not deleted."
+            rmdir "$folder" 2>/dev/null
+        fi
+    done
 }
 
 # Start a new named screen session
@@ -249,7 +279,7 @@ shredfile() {
     esac
 }
 
-# shred a folder with proper args
+# shred a flder with proper args
 shredfolder() {
     if [ -z "$1" ]; then
         echo "Usage: shredfolder <folderpath>"
@@ -287,9 +317,9 @@ cfhelp() {
              CUSTOM ALIASES
 ========================================
 ls      : Colorized, verbose list (ls --color=auto -Flartchs)
-ll      : Verbose list (ls --color=auto -Flartchs)
-la      : List all (ls --color=auto -a)
-lla     : List all verbose (ls --color=auto -la)
+ll      : Verbose list (ls -Flartchs)
+la      : List all (ls -a)
+lla     : List all verbose (ls -la)
 cp      : Robust copy via rsync (--ignore-existing)
 update  : System update (zypper ref, zypper dup, flatpak update)
 ripcd   : Run ripcd.sh script
@@ -300,15 +330,15 @@ swp     : Wipe dead screen sessions
 ========================================
             CUSTOM FUNCTIONS
 ========================================
-vmv       : Verbose file move using rsync
-vcp       : Verbose file copy using rsync
-unpack    : Intelligently extract common compression types
-sss       : Start a new named screen session (Usage: sss <session_name>)
-srs       : Reattach to an existing screen session (Usage: srs <session_name>)
-sks       : Kill a specific screen session from the outside (Usage: sks <session_name>)
-moveav    : Move and sort folders of media into images/, videos/, and audio/
-shredfile   : Runs shred against a file with proper arguments
-shredfolder : Runs shred against a folder with proper arguments  # FIX: was 'shredolder'
+vmv     : Verbose file move using rsync
+vcp     : Verbose file copy using rsync
+unpack  : Intelligently extract common compression types
+sss     : Start a new named screen session (Usage: sss <session_name>)
+srs     : Reattach to an existing screen session (Usage: srs <session_name>)
+sks     : Kill a specific screen session from the outside (Usage: sks <session_name>)
+moveav  : Move and sort folders of media into images/, videos/, and audio/
+shredfile : Runs shred against a file with proper arguments
+shredolder : Runs shred against a folder with proper arguments
 
 EOF
 }
@@ -322,32 +352,22 @@ export EDITOR='nano'
 
 # --- History
 HISTFILE=~/.zsh_history
-HISTSIZE=50000
-SAVEHIST=50000
+HISTSIZE=10000
+SAVEHIST=10000
 setopt APPEND_HISTORY        # Append history to the history file
 setopt SHARE_HISTORY         # Share history between all sessions
 setopt HIST_IGNORE_DUPS      # Don't record duplicate commands
 setopt HIST_IGNORE_ALL_DUPS  # Delete old duplicate entries from history
 setopt HIST_FIND_NO_DUPS     # Don't show duplicates when searching
 setopt HIST_REDUCE_BLANKS    # Remove superfluous blanks
-setopt HIST_VERIFY           # ADDED: show history expansion before executing (e.g. !!)
 
 # --- Completion
-# Cache compinit for faster shell startup (only regenerate once per day)
-autoload -U compinit
-if [[ -n ~/.zcompdump(#qN.mh+24) ]]; then
-    compinit
-else
-    compinit -C
-fi
-
+# Initialize the Zsh completion system
+autoload -U compinit && compinit
 # Case-insensitive completion
 zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
-# Arrow-key navigable completion menu  # ADDED
-zstyle ':completion:*' menu select
-# Group completions by type with a header label  # FIX: was missing 'format', so grouping had no effect
-zstyle ':completion:*:descriptions' format '%B%d%b'
-zstyle ':completion:*' group-name ''
+# Group completions by type
+zstyle ':completion:*:descriptions' group-name ''
 
 # --- Keybindings
 bindkey -e # Use Emacs keybindings
@@ -367,8 +387,6 @@ zstyle ':vcs_info:*' enable git # Enable for git
 # --- FANCY PROMPT
 # ------------------------------------------------------------------------------
 # This section defines the appearance of your command prompt.
-
-setopt PROMPT_SUBST
 
 # precmd() is a special function that runs just before the prompt is drawn.
 # We use it to check the context (user, git, python) and set the color.
@@ -404,7 +422,7 @@ precmd() {
 # %~ -> current directory, with '~' for home
 # ${vcs_info_msg[0]} -> The formatted git info from our zstyle above
 # %(?.<ok_char>.<err_char>) -> Shows a different character if the last command failed.
-#
-PROMPT='
+
+PROMPT="
 ${PROMPT_FG_WHITE}%n${PROMPT_FG_GRAY}@%m ${PROMPT_FG_NONE}in ${PROMPT_CONTEXT_COLOR}%B%~%b${vcs_info_msg[0]}
-${PROMPT_CONTEXT_COLOR}❯ ${PROMPT_FG_NONE}'
+${PROMPT_CONTEXT_COLOR}❯ ${PROMPT_FG_NONE}"
