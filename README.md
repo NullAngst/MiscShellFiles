@@ -4,6 +4,19 @@ A personal collection of shell scripts and config files for Linux system managem
 
 ---
 
+## Table of Contents
+
+- [Files at a Glance](#files-at-a-glance)
+- [.zshrc](#zshrc)
+- [music\_meta\_fix.sh](#music_meta_fixsh)
+- [install\_update\_portainer.sh](#install_update_portainersh)
+- [backup\_portainer.sh](#backup_portainersh)
+- [update\_opensuse.sh](#update_opensuseh)
+- [convert\_bashrc\_2\_zsh.sh](#convert_bashrc_2_zshsh)
+- [zshrc\_2\_bashrc.sh](#zshrc_2_bashrcsh)
+
+---
+
 ## Files at a Glance
 
 | File | Description |
@@ -14,6 +27,7 @@ A personal collection of shell scripts and config files for Linux system managem
 | `backup_portainer.sh` | Rsync-based backup with 7-day retention for home and `/opt` |
 | `update_opensuse.sh` | One-liner system update for openSUSE (zypper + flatpak) |
 | `convert_bashrc_2_zsh.sh` | Migrate aliases, exports, and functions from `.bashrc` to `.zshrc` |
+| `zshrc_2_bashrc.sh` | Migrate aliases, exports, and functions from `.zshrc` to `.bashrc` |
 
 ---
 
@@ -50,9 +64,9 @@ A full Zsh configuration with an amber/dark color palette themed for the Kitty t
 | `moveav [-R] [dir]` | Sort media files into `images/`, `videos/`, `audio/` subdirectories; `-R` recurses |
 | `shredfile <file>` | Securely shred a single file (with confirmation prompt and SSD warning) |
 | `shredfolder <dir>` | Securely shred all files in a directory, then remove it |
-| `sss <name>` | Start a new named `screen` session |
-| `srs <name>` | Reattach to an existing `screen` session |
-| `sks <name>` | Kill a named `screen` session from outside |
+| `sss <n>` | Start a new named `screen` session |
+| `srs <n>` | Reattach to an existing `screen` session |
+| `sks <n>` | Kill a named `screen` session from outside |
 | `cfhelp` | Print a cheat-sheet of all custom aliases and functions |
 
 Run `cfhelp` after sourcing `.zshrc` to see a quick reference of everything above.
@@ -145,6 +159,31 @@ bash convert_bashrc_2_zsh.sh --bashrc /path/to/.bashrc --zshrc /path/to/.zshrc
 ```
 
 A timestamped backup of `.zshrc` is created before any changes are written. To redo the migration, remove the block between the `# >>> bashrc migration <<<` and `# <<< bashrc migration >>>` markers and re-run.
+
+---
+
+## `zshrc_2_bashrc.sh`
+
+The reverse of `convert_bashrc_2_zsh.sh`. Extracts aliases, `export` statements, and named functions from `.zshrc` and appends them to `.bashrc` inside a clearly marked migration block.
+
+Since Zsh has constructs with no direct Bash equivalent, the script handles compatibility automatically where it can and flags everything else for manual review:
+
+- **Translated:** `typeset` is rewritten as `declare` inside functions.
+- **Warned about:** `setopt`/`unsetopt`, `autoload`, and Zsh anonymous functions `() { }` are flagged by line number but not ported.
+- **Skipped entirely:** Plugin/framework lines (`oh-my-zsh`, `zinit`, `antigen`, etc.).
+
+```bash
+# Preview what would be added (no files modified)
+bash zshrc_2_bashrc.sh --dry-run
+
+# Run the migration with default paths (~/.zshrc → ~/.bashrc)
+bash zshrc_2_bashrc.sh
+
+# Specify custom paths
+bash zshrc_2_bashrc.sh --zshrc /path/to/.zshrc --bashrc /path/to/.bashrc
+```
+
+A timestamped backup of `.bashrc` is created before any changes are written. Warnings about skipped constructs are printed both in `--dry-run` output and at the end of a live run. To redo the migration, remove the block between the `# >>> zshrc migration <<<` and `# <<< zshrc migration >>>` markers and re-run.
 
 ---
 
