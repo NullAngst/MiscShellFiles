@@ -3,6 +3,7 @@
 # system-update.sh
 # Generic Linux system updater for RMM deployment
 # Detects and runs updates for all present package managers + Flatpak/Snap
+# Usage: ./system-update.sh [-l | --log]
 # =============================================================================
 
 set -euo pipefail
@@ -14,6 +15,16 @@ LOG_FILE="/var/log/rmm-system-update.log"
 LOCKFILE="/var/run/rmm-system-update.lock"
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 ERRORS=0
+ENABLE_LOGGING=false
+
+# Parse arguments
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        -l|--log) ENABLE_LOGGING=true ;;
+        *) echo "Unknown argument: $1"; exit 1 ;;
+    esac
+    shift
+done
 
 # Prevent concurrent runs (e.g. overlapping RMM jobs)
 exec 9>"$LOCKFILE"
@@ -26,7 +37,11 @@ fi
 # Helpers
 # -----------------------------------------------------------------------------
 log() {
-    echo "[${TIMESTAMP}] $*" | tee -a "$LOG_FILE"
+    if [[ "$ENABLE_LOGGING" == true ]]; then
+        echo "[${TIMESTAMP}] $*" | tee -a "$LOG_FILE"
+    else
+        echo "[${TIMESTAMP}] $*"
+    fi
 }
 
 log_section() {
@@ -38,9 +53,16 @@ log_section() {
 
 run_cmd() {
     log "Running: $*"
-    if ! "$@" >> "$LOG_FILE" 2>&1; then
-        log "ERROR: Command failed: $*"
-        (( ERRORS++ )) || true
+    if [[ "$ENABLE_LOGGING" == true ]]; then
+        if ! "$@" >> "$LOG_FILE" 2>&1; then
+            log "ERROR: Command failed: $*"
+            (( ERRORS++ )) || true
+        fi
+    else
+        if ! "$@"; then
+            log "ERROR: Command failed: $*"
+            (( ERRORS++ )) || true
+        fi
     fi
 }
 
@@ -240,7 +262,11 @@ has_cmd flatpak  && update_flatpak
 # -----------------------------------------------------------------------------
 log_section "Update Complete"
 if [[ $ERRORS -gt 0 ]]; then
-    log "Finished with ${ERRORS} error(s). Review ${LOG_FILE} for details."
+    if [[ "$ENABLE_LOGGING" == true ]]; then
+        log "Finished with ${ERRORS} error(s). Review ${LOG_FILE} for details."
+    else
+        log "Finished with ${ERRORS} error(s)."
+    fi
     exit 1
 else
     log "All updates completed successfully."
