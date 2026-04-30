@@ -11,8 +11,16 @@ set -euo pipefail
 # Config
 # -----------------------------------------------------------------------------
 LOG_FILE="/var/log/rmm-system-update.log"
+LOCKFILE="/var/run/rmm-system-update.lock"
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 ERRORS=0
+
+# Prevent concurrent runs (e.g. overlapping RMM jobs)
+exec 9>"$LOCKFILE"
+if ! flock -n 9; then
+    echo "ERROR: Another instance of this script is already running. Exiting." >&2
+    exit 1
+fi
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -53,10 +61,22 @@ has_cmd() {
 
 update_apt() {
     log_section "APT (Debian/Ubuntu/Mint)"
+
+    # Prevent interactive prompts during unattended RMM runs
+    export DEBIAN_FRONTEND=noninteractive
+    local DPKG_OPTS=(
+        -o Dpkg::Options::="--force-confdef"
+        -o Dpkg::Options::="--force-confold"
+    )
+
     run_cmd apt update -q
-    run_cmd apt dist-upgrade -y -q
+    run_cmd apt dist-upgrade -y -q "${DPKG_OPTS[@]}"
     run_cmd apt autoremove -y -q
     run_cmd apt autoclean -q
+
+    if [[ -f /var/run/reboot-required ]]; then
+        log "WARNING: A reboot is required to complete updates (kernel or libc changed)."
+    fi
 }
 
 update_dnf() {
@@ -105,6 +125,7 @@ update_pacman() {
         log "Removing orphaned packages..."
         echo "$ORPHANS" | xargs -r pacman -Rns --noconfirm >> "$LOG_FILE" 2>&1 || true
     fi
+    run_cmd pacman -Sc --noconfirm
 }
 
 update_aur() {
@@ -130,6 +151,7 @@ update_apk() {
     log_section "APK (Alpine)"
     run_cmd apk update
     run_cmd apk upgrade
+    run_cmd apk cache clean
 }
 
 update_xbps() {
