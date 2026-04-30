@@ -76,6 +76,12 @@ update_apt() {
 
     if [[ -f /var/run/reboot-required ]]; then
         log "WARNING: A reboot is required to complete updates (kernel or libc changed)."
+        if [[ -f /var/run/reboot-required.pkgs ]]; then
+            log "Packages requiring reboot:"
+            while IFS= read -r pkg; do
+                log "  -> ${pkg}"
+            done < /var/run/reboot-required.pkgs
+        fi
     fi
 }
 
