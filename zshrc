@@ -423,6 +423,8 @@ precmd() {
 # ${vcs_info_msg[0]} -> The formatted git info from our zstyle above
 # %(?.<ok_char>.<err_char>) -> Shows a different character if the last command failed.
 
-PROMPT="
+setopt PROMPT_SUBST
+
+PROMPT='
 ${PROMPT_FG_WHITE}%n${PROMPT_FG_GRAY}@%m ${PROMPT_FG_NONE}in ${PROMPT_CONTEXT_COLOR}%B%~%b${vcs_info_msg[0]}
-${PROMPT_CONTEXT_COLOR}❯ ${PROMPT_FG_NONE}"
+${PROMPT_CONTEXT_COLOR}❯ ${PROMPT_FG_NONE}'
