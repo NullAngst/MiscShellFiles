@@ -31,7 +31,7 @@ alias ll='ls -Flartchs'
 alias la='ls -a'
 alias lla='ls -la'
 alias cp='rsync -vpartlXEHhP --ignore-existing'
-alias update='sudo zypper ref -f; sudo zypper dup; flatpak update'
+alias update='bash /home/tyler/bin/system-update.sh'
 alias ripcd='bash /home/tyler/bin/ripcd.sh'
 alias grep='grep --color=auto -i -n -I'
 
